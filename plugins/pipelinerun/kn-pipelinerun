@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# the function of download tkn binary
+download_tkn() {
+local kn_plugin_directory=$1
+local tkn_version=$2
+local tkn_binary=${3}
+# Check if tkn binary exists in kn plugin folder
+if ! test -f "${tkn_binary}"; then
+
+  tkn_release_url="https://github.com/tektoncd/cli/releases/download/v${tkn_version}"
+  mkdir -p ${kn_plugin_directory}/tkn
+  echo "Download new tkn cli ${tkn_version} for kn plugin"
+  if [[ "$OSTYPE" == "linux-gnu" ]]; then
+    # For linux
+    tkn_file_name="tkn_${tkn_version}_Linux_x86_64.tar.gz"
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # For Mac
+    tkn_file_name="tkn_${tkn_version}_Darwin_x86_64.tar.gz"
+  elif [[ "$OSTYPE" == "win32" ]]; then
+    # For Windows
+    tkn_file_name="tkn_${tkn_version}_Windows_x86_64.tar.gz"
+  else
+    # Exit error for un-support os type
+    echo "[ERROR] Unknown os type"
+    return 1
+  fi
+
+  tkn_download_url="${tkn_release_url}/${tkn_file_name}"
+  # Download tkn tgz file to /tmp folder first
+  wget -P /tmp ${tkn_download_url}
+  tar -zxvf /tmp/${tkn_file_name} -C ${kn_plugin_directory}/tkn
+  # Extract tkn cli binary to kn plugin tkn folder
+  tkn_binary="${kn_plugin_directory}/tkn/tkn"
+fi
+}
+
+# Set to use default kn plugin folder
+kn_plugin_directory=~/.kn/plugins
+# Set to use the latest tkn version
+tkn_version="0.2.2"
+tkn_binary=${kn_plugin_directory}/tkn/tkn
+# Call to download  tkn binary
+download_tkn ${kn_plugin_directory} ${tkn_version} ${tkn_binary}
+
+# kn plugin call tkn sub command
+${tkn_binary} pipelinerun $@

@@ -6,7 +6,7 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/golang/glog"
 	"knative.dev/pkg/apis"
-	"github.com/maximilien/kn-tkn-plugins/plugins/app/tekton/templates"
+	"github.com/knative-community/build-spike/plugins/app/tekton/templates"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	tekton_v1alpha1_api "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	tekton_v1alpha1_client "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/typed/pipeline/v1alpha1"

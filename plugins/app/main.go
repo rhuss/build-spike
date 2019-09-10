@@ -16,7 +16,7 @@ limitations under the License.
 package main
 
 import (
-    "github.com/maximilien/kn-tkn-plugins/plugins/app/cmd"
+    "github.com/knative-community/build-spike/plugins/app/cmd"
     "os"
 )
 

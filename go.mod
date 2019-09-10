@@ -1,4 +1,4 @@
-module github.com/maximilien/kn-tkn-plugins
+module github.com/knative-community/build-spike
 
 go 1.12
 

@@ -18,10 +18,10 @@ package cmd
 import (
 	"fmt"
 	"github.com/fatih/color"
+	"github.com/knative-community/build-spike/plugins/app/tekton"
 	servingclientset_v1alpha1 "github.com/knative/client/pkg/serving/v1alpha1"
 	serving_v1alpha1_api "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	serviceclientset "github.com/knative/serving/pkg/client/clientset/versioned"
-	"github.com/maximilien/kn-tkn-plugins/plugins/app/tekton"
 	"github.com/spf13/cobra"
 	tektoncdclientset "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
@@ -47,7 +47,7 @@ var deployCmd = &cobra.Command{
 	Short: "Deploy knative application by building image",
 	Example: `
   # Deploy from Git repository into an image
-  # ( related: https://github.com/maximilien/kn-tkn-plugins/blob/master/plugins/app/doc/deploy-git-resource.md )
+  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/app/doc/deploy-git-resource.md )
   app go deploy test -u https://github.com/bluebosh/knap-example -r master`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")

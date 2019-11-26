@@ -16,7 +16,7 @@ limitations under the License.
 package main
 
 import (
-    "github.com/knative-community/build-spike/plugins/app/cmd"
+    "github.com/knative-community/build-spike/plugins/kn-services/cmd"
     "os"
 )
 

@@ -31,7 +31,7 @@ var kubeconfig string
 
 
 var rootCmd = &cobra.Command{
-  Use:   "app",
+  Use:   "kn-service",
   Short: "Build or deploy knative application",
   Long: `Build or deploy knative application`,
 }
@@ -48,8 +48,6 @@ func init() {
 
   rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.app.yaml)")
   rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
-
-  rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
 

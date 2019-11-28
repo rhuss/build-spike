@@ -30,6 +30,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"time"
+	"github.com/spf13/viper"
+	homedir "github.com/mitchellh/go-homedir"
 )
 
 const (
@@ -39,8 +41,11 @@ const (
 	MaxTimeout = 300
 )
 
+var cfgFile string
+var kubeconfig string
+
 // deployCmd represents the deploy command
-var deployCmd = &cobra.Command{
+var rootCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy Knative service by building image",
 	Example: `
@@ -79,7 +84,7 @@ var deployCmd = &cobra.Command{
 		namespace := cmd.Flag("namespace").Value.String()
 
 		// Config kubeconfig
-		kubeconfig = rootCmd.Flag("kubeconfig").Value.String()
+		kubeconfig = cmd.Flag("kubeconfig").Value.String()
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("KUBECONFIG")
 		}
@@ -177,17 +182,51 @@ var deployCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(deployCmd)
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+	  fmt.Println(err)
+	  os.Exit(1)
+	}
+  }
 
-	deployCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	deployCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
-	deployCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
-	deployCmd.Flags().StringP("image", "i", "", "generated image path")
-	deployCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
-	deployCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
-	deployCmd.Flags().BoolP("force", "f", false, "Create service forcefully, replaces existing service if any")
+func init() {
+	// rootCmd.AddCommand(deployCmd)
+	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
+	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
+	rootCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
+	rootCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
+	rootCmd.Flags().StringP("image", "i", "", "generated image path")
+	rootCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
+	rootCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
+	rootCmd.Flags().BoolP("force", "f", false, "Create service forcefully, replaces existing service if any")
 }
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	if cfgFile != "" {
+	  // Use config file from the flag.
+	  viper.SetConfigFile(cfgFile)
+	} else {
+	  // Find home directory.
+	  home, err := homedir.Dir()
+	  if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	  }
+  
+	  // Search config in home directory with name ".app" (without extension).
+	  viper.AddConfigPath(home)
+	  viper.SetConfigName(".app")
+	}
+  
+	viper.AutomaticEnv() // read in environment variables that match
+  
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+	  fmt.Println("Using config file:", viper.ConfigFileUsed())
+	}
+  }
 
 // Create a new Knative service
 func createService(client servingclientset_v1alpha1.KnClient, service *serving_v1alpha1_api.Service) error {

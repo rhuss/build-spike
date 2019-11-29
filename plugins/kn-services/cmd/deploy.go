@@ -20,6 +20,7 @@ import (
 	"github.com/knative-community/build-spike/plugins/kn-services/tekton"
 	servingclientset_v1alpha1 "github.com/knative/client/pkg/serving/v1alpha1"
 	serving_v1alpha1_api "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	serving_v1beta1_api "github.com/knative/serving/pkg/apis/serving/v1beta1"
 	serviceclientset "github.com/knative/serving/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 	tektoncdclientset "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
@@ -46,7 +47,7 @@ var deployCmd = &cobra.Command{
 	Example: `
   # Deploy from Git repository into an image
   # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/app/doc/deploy-git-resource.md )
-  kn-service deploy example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --image us.icr.io/test/example-image --serviceaccount default`,
+  kn-service deploy example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
@@ -70,7 +71,7 @@ var deployCmd = &cobra.Command{
 			fmt.Println("[ERROR] Git revision cannot be empty")
 			os.Exit(1)
 		}
-		image := cmd.Flag("image").Value.String()
+		image := cmd.Flag("saved-image").Value.String()
 		if image == "" {
 			fmt.Println("[ERROR] Image cannot be empty")
 			os.Exit(1)
@@ -126,7 +127,7 @@ var deployCmd = &cobra.Command{
 		action := "created"
 		if serviceExists {
 			if force {
-				err = replaceService(servingClient, service, image)
+				err = replaceService(servingClient, service, image, serviceAccount)
 				action = "replaced"
 			} else {
 				fmt.Println(
@@ -136,7 +137,7 @@ var deployCmd = &cobra.Command{
 			}
 		} else {
 			if service == nil {
-				service, err = constructService(name, image, namespace)
+				service, err = constructService(name, image, serviceAccount, namespace)
 			}
 			if err != nil {
 				fmt.Println("[ERROR] Constructing service:", err)
@@ -183,7 +184,7 @@ func init() {
 	deployCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
 	deployCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
 	deployCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
-	deployCmd.Flags().StringP("image", "i", "", "generated image path")
+	deployCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
 	deployCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
 	deployCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
 	deployCmd.Flags().BoolP("force", "f", false, "Create service forcefully, replaces existing service if any")
@@ -199,15 +200,22 @@ func createService(client servingclientset_v1alpha1.KnClient, service *serving_v
 }
 
 // Replace the existing Knative service
-func replaceService(client servingclientset_v1alpha1.KnClient, service *serving_v1alpha1_api.Service, image string) error {
+func replaceService(client servingclientset_v1alpha1.KnClient, service *serving_v1alpha1_api.Service, image, serviceAccount string) error {
 	var retries = 0
 	for {
 		service.Spec = serving_v1alpha1_api.ServiceSpec{
 			ConfigurationSpec:    serving_v1alpha1_api.ConfigurationSpec{
 				Template: &serving_v1alpha1_api.RevisionTemplateSpec{
-					Spec:       serving_v1alpha1_api.RevisionSpec{
-						DeprecatedContainer: &corev1.Container{
-							Image: image,
+					Spec: serving_v1alpha1_api.RevisionSpec{
+						RevisionSpec: serving_v1beta1_api.RevisionSpec{
+							PodSpec: serving_v1beta1_api.PodSpec{
+								ServiceAccountName: serviceAccount,
+								Containers: []corev1.Container{
+									{
+										Image: image,
+									},
+								},
+							},
 						},
 					},
 				},
@@ -239,7 +247,7 @@ func serviceExists(client servingclientset_v1alpha1.KnClient, name string) (bool
 }
 
 // Create service struct from provided options
-func constructService(name, image, namespace string) (*serving_v1alpha1_api.Service,
+func constructService(name, image, serviceAccount, namespace string) (*serving_v1alpha1_api.Service,
 	error) {
 
 	service := serving_v1alpha1_api.Service{
@@ -250,9 +258,16 @@ func constructService(name, image, namespace string) (*serving_v1alpha1_api.Serv
 		Spec: serving_v1alpha1_api.ServiceSpec{
 			ConfigurationSpec:    serving_v1alpha1_api.ConfigurationSpec{
 				Template: &serving_v1alpha1_api.RevisionTemplateSpec{
-					Spec:       serving_v1alpha1_api.RevisionSpec{
-						DeprecatedContainer: &corev1.Container{
-							Image: image,
+					Spec: serving_v1alpha1_api.RevisionSpec{
+						RevisionSpec: serving_v1beta1_api.RevisionSpec{
+							PodSpec: serving_v1beta1_api.PodSpec{
+								ServiceAccountName: serviceAccount,
+								Containers: []corev1.Container{
+									{
+										Image: image,
+									},
+								},
+							},
 						},
 					},
 				},

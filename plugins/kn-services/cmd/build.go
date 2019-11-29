@@ -32,7 +32,7 @@ var buildCmd = &cobra.Command{
 	Example: `
   # Build from Git repository into an image
   # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/app/doc/deploy-git-resource.md )
-  kn-service build example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --image us.icr.io/test/example-image --serviceaccount default`,
+  kn-service build example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
@@ -56,7 +56,7 @@ var buildCmd = &cobra.Command{
 			fmt.Println("[ERROR] Git revision cannot be empty")
 			os.Exit(1)
 		}
-		image := cmd.Flag("image").Value.String()
+		image := cmd.Flag("saved-image").Value.String()
 		if image == "" {
 			fmt.Println("[ERROR] Image cannot be empty")
 			os.Exit(1)
@@ -98,7 +98,7 @@ func init() {
 	buildCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
 	buildCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
 	buildCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
-	buildCmd.Flags().StringP("image", "i", "", "generated image path")
+	buildCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
 	buildCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
 	buildCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
 }

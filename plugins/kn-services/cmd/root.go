@@ -25,6 +25,12 @@ import (
 
 )
 
+const (
+  // How often to retry in case of an optimistic lock error when replacing a service (--force)
+  MaxUpdateRetries = 3
+  // Timeout to wait service creation
+  MaxTimeout = 300
+)
 
 var cfgFile string
 var kubeconfig string

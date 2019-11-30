@@ -30,8 +30,8 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build Knative service image",
 	Example: `
-  # Build from Git repository into an image
-  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/app/doc/deploy-git-resource.md )
+  # Build from git repository into an image
+  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
   kn-service build example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
@@ -41,26 +41,7 @@ var buildCmd = &cobra.Command{
 		}
 		name := args[0]
 
-		builder := cmd.Flag("builder").Value.String()
-		if builder == "" {
-			fmt.Println("[ERROR] Builder cannot be empty")
-			os.Exit(1)
-		}
-		gitUrl := cmd.Flag("giturl").Value.String()
-		if gitUrl == "" {
-			fmt.Println("[ERROR] Git url cannot be empty")
-			os.Exit(1)
-		}
-		gitRevision := cmd.Flag("gitrevision").Value.String()
-		if gitRevision == "" {
-			fmt.Println("[ERROR] Git revision cannot be empty")
-			os.Exit(1)
-		}
-		image := cmd.Flag("saved-image").Value.String()
-		if image == "" {
-			fmt.Println("[ERROR] Image cannot be empty")
-			os.Exit(1)
-		}
+		fmt.Println("[INFO] Build from git repository into an image")
 		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
 
@@ -74,13 +55,34 @@ var buildCmd = &cobra.Command{
 			fmt.Println("[ERROR] Parsing kubeconfig error:", err)
 			os.Exit(1)
 		}
-
 		client, err := tektoncdclientset.NewForConfig(cfg)
 		if err != nil {
 			fmt.Println("[ERROR] Building kubeconfig error:", err)
 			os.Exit(1)
 		}
 		tektonClient := tekton.NewTektonClient(client.TektonV1alpha1(), namespace)
+
+		builder := cmd.Flag("builder").Value.String()
+		if builder == "" {
+			fmt.Println("[ERROR] Builder cannot be empty, please use --builder to set")
+			os.Exit(1)
+		}
+
+		gitUrl := cmd.Flag("giturl").Value.String()
+		if gitUrl == "" {
+			fmt.Println("[ERROR] Git url cannot be empty, please use --giturl to set")
+			os.Exit(1)
+		}
+		gitRevision := cmd.Flag("gitrevision").Value.String()
+		if gitRevision == "" {
+			fmt.Println("[ERROR] Git revision cannot be empty, please use --gitrevision to set")
+			os.Exit(1)
+		}
+		image := cmd.Flag("saved-image").Value.String()
+		if image == "" {
+			fmt.Println("[ERROR] Saved-image cannot be empty, please use --saved-image to set")
+			os.Exit(1)
+		}
 
 		if len(gitUrl) > 0 {
 			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace)

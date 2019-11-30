@@ -33,21 +33,14 @@ import (
 	"time"
 )
 
-const (
-	// How often to retry in case of an optimistic lock error when replacing a service (--force)
-	MaxUpdateRetries = 3
-	// Timeout to wait service creation
-	MaxTimeout = 300
-)
-
 // deployCmd represents the deploy command
 var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy Knative service by building image",
 	Example: `
-  # Deploy from Git repository into an image
-  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/app/doc/deploy-git-resource.md )
-  kn-service deploy example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
+  # Deploy from git repository to Knative service
+  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
+  kn-service deploy cnbtest --builder buildpacks-v3 --giturl https://github.com/zhangtbj/cf-sample-app-nodejs --gitrevision master --saved-image us.icr.io/test/cnbtest:v1 --serviceaccount default --force`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
@@ -56,26 +49,7 @@ var deployCmd = &cobra.Command{
 		}
 		name := args[0]
 
-		builder := cmd.Flag("builder").Value.String()
-		if builder == "" {
-			fmt.Println("[ERROR] Builder cannot be empty")
-			os.Exit(1)
-		}
-		gitUrl := cmd.Flag("giturl").Value.String()
-		if gitUrl == "" {
-			fmt.Println("[ERROR] Git url cannot be empty")
-			os.Exit(1)
-		}
-		gitRevision := cmd.Flag("gitrevision").Value.String()
-		if gitRevision == "" {
-			fmt.Println("[ERROR] Git revision cannot be empty")
-			os.Exit(1)
-		}
-		image := cmd.Flag("saved-image").Value.String()
-		if image == "" {
-			fmt.Println("[ERROR] Image cannot be empty")
-			os.Exit(1)
-		}
+		fmt.Println("[INFO] Deploy from git repository to Knative service")
 		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
 
@@ -89,13 +63,34 @@ var deployCmd = &cobra.Command{
 			fmt.Println("[ERROR] Parsing kubeconfig error:", err)
 			os.Exit(1)
 		}
-
 		client, err := tektoncdclientset.NewForConfig(cfg)
 		if err != nil {
 			fmt.Println("[ERROR] Building kubeconfig error:", err)
 			os.Exit(1)
 		}
 		tektonClient := tekton.NewTektonClient(client.TektonV1alpha1(), namespace)
+
+		builder := cmd.Flag("builder").Value.String()
+		if builder == "" {
+			fmt.Println("[ERROR] Builder cannot be empty, please use --builder to set")
+			os.Exit(1)
+		}
+
+		gitUrl := cmd.Flag("giturl").Value.String()
+		if gitUrl == "" {
+			fmt.Println("[ERROR] Git url cannot be empty, please use --giturl to set")
+			os.Exit(1)
+		}
+		gitRevision := cmd.Flag("gitrevision").Value.String()
+		if gitRevision == "" {
+			fmt.Println("[ERROR] Git revision cannot be empty, please use --gitrevision to set")
+			os.Exit(1)
+		}
+		image := cmd.Flag("saved-image").Value.String()
+		if image == "" {
+			fmt.Println("[ERROR] Saved-image cannot be empty, please use --saved-image to set")
+			os.Exit(1)
+		}
 
 		if len(gitUrl) > 0 {
 			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace)
@@ -118,6 +113,7 @@ var deployCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		fmt.Println("\n[INFO] Deploy the Knative service by using the new generated image")
 		servingClient := servingclientset_v1alpha1.NewKnServingClient(knclient.ServingV1alpha1(), namespace)
 		serviceExists, service, err := serviceExists(servingClient, name)
 		if err != nil {

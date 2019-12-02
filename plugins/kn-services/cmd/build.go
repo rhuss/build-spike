@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmd
+package main
 
 import (
 	"fmt"
@@ -23,10 +23,22 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc" // from https://github.com/kubernetes/client-go/issues/345
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
+	"github.com/spf13/viper"
+	homedir "github.com/mitchellh/go-homedir"
 )
 
+const (
+	// How often to retry in case of an optimistic lock error when replacing a service (--force)
+	MaxUpdateRetries = 3
+	// Timeout to wait service creation
+	MaxTimeout = 300
+)
+
+var cfgFile string
+var kubeconfig string
+
 // buildCmd represents the build command
-var buildCmd = &cobra.Command{
+var rootCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build Knative service image",
 	Example: `
@@ -46,7 +58,7 @@ var buildCmd = &cobra.Command{
 		namespace := cmd.Flag("namespace").Value.String()
 
 		// Config kubeconfig
-		kubeconfig = rootCmd.Flag("kubeconfig").Value.String()
+		kubeconfig = cmd.Flag("kubeconfig").Value.String()
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("KUBECONFIG")
 		}
@@ -95,12 +107,52 @@ var buildCmd = &cobra.Command{
 	},
 }
 
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+	  fmt.Println(err)
+	  os.Exit(1)
+	}
+  }
+
 func init() {
-	rootCmd.AddCommand(buildCmd)
-	buildCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	buildCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
-	buildCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
-	buildCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
-	buildCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
-	buildCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
+	// rootCmd.AddCommand(buildCmd)
+	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
+	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
+	rootCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
+	rootCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
+	rootCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
+	rootCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
+	rootCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
+}
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	if cfgFile != "" {
+	  // Use config file from the flag.
+	  viper.SetConfigFile(cfgFile)
+	} else {
+	  // Find home directory.
+	  home, err := homedir.Dir()
+	  if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	  }
+  
+	  // Search config in home directory with name ".app" (without extension).
+	  viper.AddConfigPath(home)
+	  viper.SetConfigName(".app")
+	}
+  
+	viper.AutomaticEnv() // read in environment variables that match
+  
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+	  fmt.Println("Using config file:", viper.ConfigFileUsed())
+	}
+  }
+
+func main() {
+    Execute()
+    os.Exit(0)
 }

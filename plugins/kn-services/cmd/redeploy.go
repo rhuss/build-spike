@@ -13,23 +13,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package cmd
+package main
 
 import (
 	"fmt"
 	"github.com/knative-community/build-spike/plugins/kn-services/tekton"
 	servingclientset_v1alpha1 "github.com/knative/client/pkg/serving/v1alpha1"
+	serving_v1alpha1_api "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	serving_v1beta1_api "github.com/knative/serving/pkg/apis/serving/v1beta1"
 	serviceclientset "github.com/knative/serving/pkg/client/clientset/versioned"
 	"github.com/spf13/cobra"
 	tektoncdclientset "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
+	corev1 "k8s.io/api/core/v1"
+	api_errors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc" // from https://github.com/kubernetes/client-go/issues/345
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"time"
+	"github.com/spf13/viper"
+	homedir "github.com/mitchellh/go-homedir"
 )
 
+const (
+	// How often to retry in case of an optimistic lock error when replacing a service (--force)
+	MaxUpdateRetries = 3
+	// Timeout to wait service creation
+	MaxTimeout = 300
+)
+
+var cfgFile string
+var kubeconfig string
+
 // deployCmd represents the deploy command
-var redeployCmd = &cobra.Command{
+var rootCmd = &cobra.Command{
 	Use:   "redeploy",
 	Short: "Redeploy Knative service by special settings",
 	Example: `
@@ -54,7 +71,7 @@ var redeployCmd = &cobra.Command{
 		}
 
 		// Config kubeconfig
-		kubeconfig = rootCmd.Flag("kubeconfig").Value.String()
+		kubeconfig = cmd.Flag("kubeconfig").Value.String()
 		if kubeconfig == "" {
 			kubeconfig = os.Getenv("KUBECONFIG")
 		}
@@ -220,13 +237,140 @@ var redeployCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	rootCmd.AddCommand(redeployCmd)
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+	  fmt.Println(err)
+	  os.Exit(1)
+	}
+  }
 
-	redeployCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	redeployCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
-	redeployCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
-	redeployCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
-	redeployCmd.Flags().StringP("serviceaccount", "s", "", "service account to push image")
-	redeployCmd.Flags().StringP( "namespace", "n","", "namespace of build")
+func init() {
+	// rootCmd.AddCommand(redeployCmd)
+	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
+	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
+	rootCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
+	rootCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
+	rootCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
+	rootCmd.Flags().StringP("serviceaccount", "s", "", "service account to push image")
+	rootCmd.Flags().StringP( "namespace", "n","", "namespace of build")
+}
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	if cfgFile != "" {
+	  // Use config file from the flag.
+	  viper.SetConfigFile(cfgFile)
+	} else {
+	  // Find home directory.
+	  home, err := homedir.Dir()
+	  if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	  }
+  
+	  // Search config in home directory with name ".app" (without extension).
+	  viper.AddConfigPath(home)
+	  viper.SetConfigName(".app")
+	}
+  
+	viper.AutomaticEnv() // read in environment variables that match
+  
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+	  fmt.Println("Using config file:", viper.ConfigFileUsed())
+	}
+  }
+
+func main() {
+    Execute()
+    os.Exit(0)
+}
+
+// Create a new Knative service
+func createService(client servingclientset_v1alpha1.KnClient, service *serving_v1alpha1_api.Service) error {
+	err := client.CreateService(service)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Replace the existing Knative service
+func replaceService(client servingclientset_v1alpha1.KnClient, service *serving_v1alpha1_api.Service, image, serviceAccount string) error {
+	var retries = 0
+	for {
+		service.Spec = serving_v1alpha1_api.ServiceSpec{
+			ConfigurationSpec:    serving_v1alpha1_api.ConfigurationSpec{
+				Template: &serving_v1alpha1_api.RevisionTemplateSpec{
+					Spec: serving_v1alpha1_api.RevisionSpec{
+						RevisionSpec: serving_v1beta1_api.RevisionSpec{
+							PodSpec: serving_v1beta1_api.PodSpec{
+								ServiceAccountName: serviceAccount,
+								Containers: []corev1.Container{
+									{
+										Image: image,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		err := client.UpdateService(service)
+		if err != nil {
+			// Retry to update when a resource version conflict exists
+			if api_errors.IsConflict(err) && retries < MaxUpdateRetries {
+				retries++
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+}
+
+// Check if the service exists
+func serviceExists(client servingclientset_v1alpha1.KnClient, name string) (bool, *serving_v1alpha1_api.Service, error) {
+	service, err := client.GetService(name)
+	if api_errors.IsNotFound(err) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	return true, service, nil
+}
+
+// Create service struct from provided options
+func constructService(name, image, serviceAccount, namespace string) (*serving_v1alpha1_api.Service,
+	error) {
+
+	service := serving_v1alpha1_api.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: serving_v1alpha1_api.ServiceSpec{
+			ConfigurationSpec:    serving_v1alpha1_api.ConfigurationSpec{
+				Template: &serving_v1alpha1_api.RevisionTemplateSpec{
+					Spec: serving_v1alpha1_api.RevisionSpec{
+						RevisionSpec: serving_v1beta1_api.RevisionSpec{
+							PodSpec: serving_v1beta1_api.PodSpec{
+								ServiceAccountName: serviceAccount,
+								Containers: []corev1.Container{
+									{
+										Image: image,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return &service, nil
 }

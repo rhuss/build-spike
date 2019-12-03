@@ -17,7 +17,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/knative-community/build-spike/plugins/kn-services/tekton"
+	"github.com/knative-community/build-spike/plugins/deploy/tekton"
 	servingclientset_v1alpha1 "github.com/knative/client/pkg/serving/v1alpha1"
 	serving_v1alpha1_api "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	serving_v1beta1_api "github.com/knative/serving/pkg/apis/serving/v1beta1"
@@ -47,12 +47,12 @@ var kubeconfig string
 
 // deployCmd represents the deploy command
 var rootCmd = &cobra.Command{
-	Use:   "redeploy",
-	Short: "Redeploy Knative service by special settings",
+	Use:   "deploy",
+	Short: "Deploy Knative service by building image",
 	Example: `
-  # Redeploy from git repository to Knative service
+  # Deploy from git repository to Knative service
   # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
-  deploy cnbtest --saved-image us.icr.io/test/cnbtest:v2 --namespace default`,
+  kn-service deploy cnbtest --builder buildpacks-v3 --git-url https://github.com/zhangtbj/cf-sample-app-nodejs --git-revision master --saved-image us.icr.io/test/cnbtest:v1 --serviceaccount default --force`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
@@ -60,15 +60,10 @@ var rootCmd = &cobra.Command{
 			os.Exit(0)
 		}
 		name := args[0]
-		gitResourceName := name + "-git"
-		imageResourceName := name + "-image"
 
-		fmt.Println("[INFO] Redeploy Knative service by special settings")
+		fmt.Println("[INFO] Deploy from git repository to Knative service")
+		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
-		if namespace == "" {
-			fmt.Println("[ERROR] Namespace cannot be empty, please use --namespace to set")
-			os.Exit(1)
-		}
 
 		// Config kubeconfig
 		kubeconfig = cmd.Flag("kubeconfig").Value.String()
@@ -89,81 +84,23 @@ var rootCmd = &cobra.Command{
 
 		builder := cmd.Flag("builder").Value.String()
 		if builder == "" {
-			imageResource, err := tektonClient.GetPipelineResource(imageResourceName)
-			if err != nil {
-				fmt.Println("[ERROR] Get image output resource error:", err)
-				os.Exit(1)
-			}
-			if len(imageResource.Labels) > 0 {
-				builder = imageResource.Labels["builder"]
-			}
-		}
-		if builder == "" {
-			fmt.Println("[ERROR] Cannot get builder for redeploy, please use --builder to set")
+			fmt.Println("[ERROR] Builder cannot be empty, please use --builder to set")
 			os.Exit(1)
 		}
 
-		serviceAccount := cmd.Flag("serviceaccount").Value.String()
-		if serviceAccount == "" {
-			imageResource, err := tektonClient.GetPipelineResource(imageResourceName)
-			if err != nil {
-				fmt.Println("[ERROR] Get image output resource error:", err)
-				os.Exit(1)
-			}
-			if len(imageResource.Labels) > 0 {
-				serviceAccount = imageResource.Labels["serviceaccount"]
-			}
-		}
-		if serviceAccount == "" {
-			fmt.Println("[ERROR] Cannot get serviceaccount for redeploy, please use --serviceaccount to set")
-			os.Exit(1)
-		}
-
-		gitUrl := cmd.Flag("giturl").Value.String()
+		gitUrl := cmd.Flag("git-url").Value.String()
 		if gitUrl == "" {
-			gitResource, err := tektonClient.GetPipelineResource(gitResourceName)
-			if err != nil {
-				fmt.Println("[ERROR] Get Git output resource error:", err)
-				os.Exit(1)
-			}
-			if len(gitResource.Spec.Params) > 0 {
-				gitUrl = gitResource.Spec.Params[0].Value
-			}
-		}
-		if gitUrl == "" {
-			fmt.Println("[ERROR] Cannot get git url for redeploy, please use --giturl to set")
+			fmt.Println("[ERROR] Git url cannot be empty, please use --git-url to set")
 			os.Exit(1)
 		}
-
-		gitRevision := cmd.Flag("gitrevision").Value.String()
+		gitRevision := cmd.Flag("git-revision").Value.String()
 		if gitRevision == "" {
-			gitResource, err := tektonClient.GetPipelineResource(gitResourceName)
-			if err != nil {
-				fmt.Println("[ERROR] Get Git output resource error:", err)
-				os.Exit(1)
-			}
-			if len(gitResource.Spec.Params) > 0 {
-				gitRevision = gitResource.Spec.Params[1].Value
-			}
-		}
-		if gitRevision == "" {
-			fmt.Println("[ERROR] Cannot get git revision for redeploy, please use --gitrevision to set")
+			fmt.Println("[ERROR] Git revision cannot be empty, please use --git-revision to set")
 			os.Exit(1)
 		}
-
 		image := cmd.Flag("saved-image").Value.String()
 		if image == "" {
-			imageResource, err := tektonClient.GetPipelineResource(imageResourceName)
-			if err != nil {
-				fmt.Println("[ERROR] Get image output resource error:", err)
-				os.Exit(1)
-			}
-			if len(imageResource.Spec.Params) > 0 {
-				image = imageResource.Spec.Params[0].Value
-			}
-		}
-		if image == "" {
-			fmt.Println("[ERROR] Cannot get saved-image for redeploy, please use --saved-image to set")
+			fmt.Println("[ERROR] Saved-image cannot be empty, please use --saved-image to set")
 			os.Exit(1)
 		}
 
@@ -176,6 +113,11 @@ var rootCmd = &cobra.Command{
 			fmt.Println("[INFO] Generate image", image, "from git repo")
 		}
 
+		force, err := cmd.Flags().GetBool("force")
+		if err != nil {
+			fmt.Println("[ERROR] Parsing force parameter:", err)
+			os.Exit(1)
+		}
 		// Deploy knative service
 		knclient, err := serviceclientset.NewForConfig(cfg)
 		if err != nil {
@@ -183,7 +125,7 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Println("\n[INFO] Redeploy the Knative service by using the new generated image")
+		fmt.Println("\n[INFO] Deploy the Knative service by using the new generated image")
 		servingClient := servingclientset_v1alpha1.NewKnServingClient(knclient.ServingV1alpha1(), namespace)
 		serviceExists, service, err := serviceExists(servingClient, name)
 		if err != nil {
@@ -192,8 +134,15 @@ var rootCmd = &cobra.Command{
 		}
 		action := "created"
 		if serviceExists {
-			err = replaceService(servingClient, service, image, serviceAccount)
-			action = "replaced"
+			if force {
+				err = replaceService(servingClient, service, image, serviceAccount)
+				action = "replaced"
+			} else {
+				fmt.Println(
+					"[ERROR] cannot create service", name, "in namespace", namespace,
+						"because the service already exists and no --force option was given")
+				os.Exit(1)
+			}
 		} else {
 			if service == nil {
 				service, err = constructService(name, image, serviceAccount, namespace)
@@ -245,15 +194,16 @@ func Execute() {
   }
 
 func init() {
-	// rootCmd.AddCommand(redeployCmd)
-	cobra.OnInitialize(initConfig)
+    // rootCmd.AddCommand(deployCmd)
+    cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
 	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	rootCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
-	rootCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
+	rootCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
+	rootCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
 	rootCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
-	rootCmd.Flags().StringP("serviceaccount", "s", "", "service account to push image")
-	rootCmd.Flags().StringP( "namespace", "n","", "namespace of build")
+	rootCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
+	rootCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
+	rootCmd.Flags().BoolP("force", "f", false, "Create service forcefully, replaces existing service if any")
 }
 
 // initConfig reads in config file and ENV variables if set.

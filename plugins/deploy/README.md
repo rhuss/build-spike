@@ -79,38 +79,38 @@ You can use `deploy` command line interface to deploy the image.
 ```
   deploy ${image_name} \
     --builder buildpacks-v3 \
-    --giturl ${url_of_git_repo} \
-    --gitrevision ${revision_of_git_repo} \
+    --git-url ${url_of_git_repo} \
+    --git-revision ${revision_of_git_repo} \
     --saved-image ${generated_image_path} \
     --serviceaccount ${ServiceAccount_for_ pushing_image} \
     --namespcae ${namespace} --force
 ```
 Now, we have 8 parameters, they are:
-- image_name: generated image name
-- builder: a builder can be used to build image
-- giturl: the url of git repo
-- gitrevision: revision of the relative git repo
-- saved-image: generated image path
-- serviceaccount: a ServiceAccount for pushing image
-- namespace: a namespace for building images. If you don't specify, it is default
-- force: create service forcefully, replaces existing service if any. Default is false
+- `--image_name`: generated image name
+- `--builder`: a builder can be used to build image
+- `--git-url`: the url of git repo
+- `--git-revision`: revision of the relative git repo
+- `--saved-image`: generated image path
+- `--serviceaccount`: a ServiceAccount for pushing image
+- `--namespace`: a namespace for building images. If you don't specify, it is default
+- `--force`: create service forcefully, replaces existing service if any. Default is false
 
 ## Redeploy Knative service
 Sometimes, we want to modify some parameters and redeploy this image. Then we can use `redeploy` CLI to achieve our targets.
-For example, we only want to change the gitrevision, then we can simply use below command to come true:
+For example, we only want to change the git-revision, then we can simply use below command to come true:
 ```
   redeploy ${image_name} \
     --saved-image ${new_path_of_generated_image} \
-    --gitrevision ${new-revision} \
+    --git-revision ${new-revision} \
     --namespcae ${namespace}
 ```
 
-## Deploy and Redeploy Knative service by kaniko builder task
+## Deploy Knative service by kaniko builder task
 You can also use `kaniko` builder to deploy images, all steps are same with `buildpacks`. Below is an example about the deployment using kaniko:
 ```
   deploy kanikotest \
     --builder kaniko \
-    --giturl https://github.com/bluebosh/knap-example \
+    --git-url https://github.com/bluebosh/knap-example \
     --saved-image us.icr.io/knative_jordan/kanikotest:latest \
     --serviceaccount default \
     --force
@@ -135,11 +135,11 @@ ibmcloud ks cluster-config --cluster ${cluster_name}
 3. Use buildpacks-v3 builder to deploy an image named `kntest` and push it to `us.icr.io/knative_test/kntest:v1`
 
 ```
-deploy kntest --builder buildpacks-v3 --giturl https://github.com/zhangtbj/cf-sample-app-go --gitrevision master --saved-image us.icr.io/knative_test/kntest:v1 --serviceaccount pipeline-account --force
+deploy kntest --builder buildpacks-v3 --git-url https://github.com/zhangtbj/cf-sample-app-go --git-revision master --saved-image us.icr.io/knative_test/kntest:v1 --serviceaccount pipeline-account --force
 ```
 Command result:
 ```
-xiangxiulis-mbp:cmd xiangxiuli$ ./deploy kntest --builder buildpacks-v3 --giturl https://github.com/zhangtbj/cf-sample-app-go --gitrevision master --saved-image us.icr.io/knative_jordan/kntest:v1 --serviceaccount pipeline-account --force
+xiangxiulis-mbp:cmd xiangxiuli$ ./deploy kntest --builder buildpacks-v3 --git-url https://github.com/zhangtbj/cf-sample-app-go --git-revision master --saved-image us.icr.io/knative_jordan/kntest:v1 --serviceaccount pipeline-account --force
 
 [INFO] Deploy from git repository to Knative service
 [INFO] Building image kntest in namespace default
@@ -183,9 +183,9 @@ Helloworld from master branch!
 
 6. Reploy above image and Access the knative service
 ```
-redeploy kntest --gitrevision develop --saved-image us.icr.io/knative_test/kntest:v2 --namespace default
+redeploy kntest --git-revision develop --saved-image us.icr.io/knative_test/kntest:v2 --namespace default
 ```
-For the redeployed image, we change the gitrevision from master to develop. At the same, we access the knative service, it should be changed into:
+For the redeployed image, we change the git-revision from master to develop. At the same, we access the knative service, it should be changed into:
 ```
 Helloworld from develop branch!
 ```

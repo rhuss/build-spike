@@ -17,7 +17,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/knative-community/build-spike/plugins/kn-services/tekton"
+	"github.com/knative-community/build-spike/plugins/deploy/tekton"
 	"github.com/spf13/cobra"
 	tektoncdclientset "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc" // from https://github.com/kubernetes/client-go/issues/345
@@ -44,7 +44,7 @@ var rootCmd = &cobra.Command{
 	Example: `
   # Build from git repository into an image
   # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
-  kn-service build example-image --giturl https://github.com/bluebosh/knap-example -gitrevision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
+  kn-service build example-image --git-url https://github.com/bluebosh/knap-example -git-revision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
@@ -80,14 +80,14 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		gitUrl := cmd.Flag("giturl").Value.String()
+		gitUrl := cmd.Flag("git-url").Value.String()
 		if gitUrl == "" {
-			fmt.Println("[ERROR] Git url cannot be empty, please use --giturl to set")
+			fmt.Println("[ERROR] Git url cannot be empty, please use --git-url to set")
 			os.Exit(1)
 		}
-		gitRevision := cmd.Flag("gitrevision").Value.String()
+		gitRevision := cmd.Flag("git-revision").Value.String()
 		if gitRevision == "" {
-			fmt.Println("[ERROR] Git revision cannot be empty, please use --gitrevision to set")
+			fmt.Println("[ERROR] Git revision cannot be empty, please use --git-revision to set")
 			os.Exit(1)
 		}
 		image := cmd.Flag("saved-image").Value.String()
@@ -119,8 +119,8 @@ func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
 	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	rootCmd.Flags().StringP( "giturl", "u","", "[Git] url of git repo")
-	rootCmd.Flags().StringP( "gitrevision", "r","master", "[Git] revision of git repo")
+	rootCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
+	rootCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
 	rootCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
 	rootCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
 	rootCmd.Flags().StringP( "namespace", "n","default", "namespace of build")

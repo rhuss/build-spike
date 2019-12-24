@@ -18,13 +18,13 @@ package main
 import (
 	"fmt"
 	"github.com/knative-community/build-spike/plugins/deploy/tekton"
+	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	tektoncdclientset "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc" // from https://github.com/kubernetes/client-go/issues/345
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
-	"github.com/spf13/viper"
-	homedir "github.com/mitchellh/go-homedir"
 )
 
 const (
@@ -38,22 +38,22 @@ var cfgFile string
 var kubeconfig string
 
 // buildCmd represents the build command
-var rootCmd = &cobra.Command{
+var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Build Knative service image",
 	Example: `
-  # Build from git repository into an image
+  # Build from source code into an image
   # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
-  kn-service build example-image --git-url https://github.com/bluebosh/knap-example -git-revision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
+  kn build example-image --git-url https://github.com/bluebosh/knap-example -git-revision master --builder kaniko --saved-image us.icr.io/test/example-image --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {
+			fmt.Println("[ERROR] Name cannot be empty, please set as the first parameter")
 			cmd.Help()
 			os.Exit(0)
 		}
 		name := args[0]
 
-		fmt.Println("[INFO] Build from git repository into an image")
 		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
 
@@ -81,49 +81,55 @@ var rootCmd = &cobra.Command{
 		}
 
 		gitUrl := cmd.Flag("git-url").Value.String()
-		if gitUrl == "" {
-			fmt.Println("[ERROR] Git url cannot be empty, please use --git-url to set")
-			os.Exit(1)
-		}
 		gitRevision := cmd.Flag("git-revision").Value.String()
-		if gitRevision == "" {
-			fmt.Println("[ERROR] Git revision cannot be empty, please use --git-revision to set")
-			os.Exit(1)
-		}
+		file := cmd.Flag("file").Value.String()
+
 		image := cmd.Flag("saved-image").Value.String()
 		if image == "" {
 			fmt.Println("[ERROR] Saved-image cannot be empty, please use --saved-image to set")
 			os.Exit(1)
 		}
 
-		if len(gitUrl) > 0 {
+		if len(gitUrl) > 0 && len(file) == 0 {
+			fmt.Println("[INFO] Build from git repository into an image")
 			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace)
 			if err != nil {
-				fmt.Println("[ERROR] Building image error:", err)
+				fmt.Println("[ERROR] Building image from git error:", err)
 				os.Exit(1)
 			}
-			fmt.Println("[INFO] Generate image", image, "from git repo")
+			fmt.Println("[INFO] Create image", image, "from git repo")
+		} else if len(file) > 0 && len(gitUrl) == 0 {
+			fmt.Println("[INFO] Build from function file into an image")
+			err = tektonClient.BuildFromFunctionFile(name, builder, file, image, serviceAccount, namespace)
+			if err != nil {
+				fmt.Println("[ERROR] Building image from function file error:", err)
+				os.Exit(1)
+			}
+			fmt.Println("[INFO] Create image", image, "from function file")
+		} else {
+			fmt.Println("[ERROR] Do not support set --git-url and --file parameters together")
+			os.Exit(1)
 		}
 	},
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := buildCmd.Execute(); err != nil {
 	  fmt.Println(err)
 	  os.Exit(1)
 	}
   }
 
 func init() {
-	// rootCmd.AddCommand(buildCmd)
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
-	rootCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
-	rootCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
-	rootCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
-	rootCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
-	rootCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
-	rootCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
+	buildCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
+	buildCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
+	buildCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
+	buildCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
+	buildCmd.Flags().StringP( "file", "f","", "[Function] File of function which snippet of code without http server")
+	buildCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
+	buildCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")
+	buildCmd.Flags().StringP( "namespace", "n","default", "namespace of build")
 }
 
 // initConfig reads in config file and ENV variables if set.

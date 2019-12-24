@@ -1,14 +1,18 @@
 package tekton
 
 import (
+	"errors"
 	"fmt"
 	"github.com/golang/glog"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	pipelinev1alpha1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1alpha1"
 	tekton_v1alpha1_client "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/typed/pipeline/v1alpha1"
+	"io/ioutil"
 	api_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"knative.dev/pkg/apis"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -25,7 +29,7 @@ type TektonClient interface {
 	ConstructGitResource(name, url, revision, namespace string) *pipelinev1alpha1.PipelineResource
 
 	// Create image resource struct from provided options
-	ConstructImageResource(name, image, builder, serviceAccount, namespace string) *pipelinev1alpha1.PipelineResource
+	ConstructImageResource(name, image, builder, file, serviceAccount, namespace string) *pipelinev1alpha1.PipelineResource
 
 	// Get a PipelineResource by its unique name
 	GetPipelineResource(name string) (*v1alpha1.PipelineResource, error)
@@ -42,8 +46,11 @@ type TektonClient interface {
 	// Check if the builder task exists
 	TaskExists(name string) error
 
-	// Create task run struct from provided options
-	ConstructTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace string) *pipelinev1alpha1.TaskRun
+	// Create git task run struct from provided options
+	ConstructGitTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace string) *pipelinev1alpha1.TaskRun
+
+	// Create function file task run struct from provided options
+	ConstructFunctionFileTaskRun(name, builder, file, serviceAccount, namespace string) (*pipelinev1alpha1.TaskRun, error)
 
 	// Get a task run by its unique name
 	GetTaskRun(name string) (*v1alpha1.TaskRun, error)
@@ -53,6 +60,9 @@ type TektonClient interface {
 
 	// Build image from git
 	BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace string) error
+
+	// Build image from function file
+	BuildFromFunctionFile(name, builder, file, image, serviceAccount, namespace string) error
 }
 
 type tektonClient struct {
@@ -116,12 +126,15 @@ func (cl *tektonClient) ConstructGitResource(name, url, revision, namespace stri
 }
 
 // Create image resource struct from provided options
-func (cl *tektonClient) ConstructImageResource(name, image, builder, serviceAccount, namespace string) *pipelinev1alpha1.PipelineResource {
+func (cl *tektonClient) ConstructImageResource(name, image, builder, file, serviceAccount, namespace string) *pipelinev1alpha1.PipelineResource {
 
 	imageresource := pipelinev1alpha1.PipelineResource{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
+			Annotations: map[string]string{
+				"file": file,
+			},
 			Labels: map[string]string{
 				// The builder and service account will be stored in image output resource labels
 				"builder": builder,
@@ -194,8 +207,8 @@ func (cl *tektonClient) UpdatePipelineResource(pipelineresource *v1alpha1.Pipeli
 	}
 }
 
-// Create Task struct from provided options
-func (cl *tektonClient) ConstructTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace string) *pipelinev1alpha1.TaskRun {
+// Create git task struct from provided options
+func (cl *tektonClient) ConstructGitTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace string) *pipelinev1alpha1.TaskRun {
 
 	builderImage := ""
 	if builder == BuildpacksBuilderName {
@@ -239,6 +252,75 @@ func (cl *tektonClient) ConstructTaskRun(name, builder, gitResourceName, imageRe
 		},
 	}
 	return nil
+}
+
+// Create function file task struct from provided options
+func (cl *tektonClient) ConstructFunctionFileTaskRun(name, builder, file, serviceAccount, namespace string) (*pipelinev1alpha1.TaskRun, error) {
+
+	code := ""
+	err := errors.New("unknown error")
+	if strings.HasPrefix(file, "function ") {
+		code = file
+	} else if strings.HasPrefix(file, "http") {
+		code, err = readUrlFile(file)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		code, err = readFile(file)
+		if err != nil {
+			return nil, err
+		}
+	}
+	fmt.Println("[INFO] Read code from function file", file)
+	fmt.Println("[INFO] Function code:", code)
+
+	return &pipelinev1alpha1.TaskRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:    namespace,
+			GenerateName: name + "-build-",
+		},
+		Spec: pipelinev1alpha1.TaskRunSpec{
+			TaskRef: &pipelinev1alpha1.TaskRef{
+				Name: builder,
+			},
+			Inputs: pipelinev1alpha1.TaskRunInputs{
+				Resources: []pipelinev1alpha1.TaskResourceBinding{{
+					ResourceRef: pipelinev1alpha1.PipelineResourceRef{
+						Name:       name + "-git",
+					},
+					Name: "runtime-git",
+				}},
+				Params: []pipelinev1alpha1.Param{
+					{
+						Name:  "DOCKERFILE",
+						Value: *ArrayOrString("./runtime-git/core/nodejs10Action/knative/Dockerfile"),
+					},
+					{
+						Name:  "OW_ACTION_NAME",
+						Value: *ArrayOrString("nodejs-" + name),
+					},
+					{
+						Name:  "OW_ACTION_CODE",
+						Value: *ArrayOrString(code),
+					},
+					{
+						Name:  "OW_PROJECT_URL",
+						Value: *ArrayOrString(""),
+					},
+				},
+			},
+			Outputs: pipelinev1alpha1.TaskRunOutputs{
+				Resources: []pipelinev1alpha1.TaskResourceBinding{{
+					ResourceRef: pipelinev1alpha1.PipelineResourceRef{
+						Name:       name + "-image",
+					},
+					Name: "runtime-image",
+				}},
+			},
+			ServiceAccount: serviceAccount,
+		},
+	}, nil
 }
 
 // Get a tas krun by its unique name
@@ -309,7 +391,7 @@ func (cl *tektonClient) BuildFromGit(name, builder, gitUrl, gitRevision, image, 
 
 	// Create image resource
 	imageResourceName := name + "-image"
-	imageResource := cl.ConstructImageResource(imageResourceName, image, builder, serviceAccount, namespace)
+	imageResource := cl.ConstructImageResource(imageResourceName, image, builder, "", serviceAccount, namespace)
 	imageResourceExists, err := cl.PipelineResourceExists(imageResourceName)
 	if err != nil {
 		glog.Fatalf("[ERROR] Check image resource exist error: %s", err)
@@ -326,14 +408,104 @@ func (cl *tektonClient) BuildFromGit(name, builder, gitUrl, gitRevision, image, 
 	}
 
 	// Start source-to-image task run
-	buildTaskRun := cl.ConstructTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace)
+	buildTaskRun := cl.ConstructGitTaskRun(name, builder, gitResourceName, imageResourceName, serviceAccount, namespace)
 	fmt.Println("[INFO] Start task run for image", name)
 	taskRunName, err := cl.StartTaskRun(buildTaskRun)
 	if err != nil {
-		return err
+		glog.Fatalf("[ERROR] Run git task run error: %s", err)
 	}
 	fmt.Println("[INFO] Complete task run", taskRunName,"successfully")
 	fmt.Println("[INFO] Complete building application", name, "image in namespace", namespace)
 
 	return nil
+}
+
+// Build application from function file
+func (cl *tektonClient) BuildFromFunctionFile(name, builder, file, image, serviceAccount, namespace string) error {
+
+	fmt.Println("[INFO] Building image", name, "in namespace", namespace)
+	fmt.Println("[INFO] By using builder", builder, "and service account", serviceAccount)
+	fmt.Println("[INFO] From function file", file)
+
+	err := cl.TaskExists(builder)
+	if err != nil {
+		return err
+	}
+	fmt.Println("[INFO] Get task", builder, "successfully")
+
+	// Create git resource
+	gitResourceName := name + "-git"
+	gitUrl := "https://github.com/apache/openwhisk-runtime-nodejs.git"
+	gitRevision := "master"
+	gitResource := cl.ConstructGitResource(gitResourceName, gitUrl, gitRevision, namespace)
+	gitResourceExists, err := cl.PipelineResourceExists(gitResourceName)
+	if err != nil {
+		glog.Fatalf("[ERROR] Check git resource exist error: %s", err)
+	}
+	if gitResourceExists {
+		fmt.Println("[INFO] git resource", gitResourceName, "exists, updating")
+		err = cl.UpdatePipelineResource(gitResource)
+	} else {
+		fmt.Println("[INFO] git resource", gitResourceName, "doesn't exist, creating")
+		err = cl.CreatePipelineResource(gitResource)
+	}
+	if err != nil {
+		glog.Fatalf("[ERROR] Create git resource error: %s", err)
+	}
+
+	// Create image resource
+	imageResourceName := name + "-image"
+	imageResource := cl.ConstructImageResource(imageResourceName, image, builder, file, serviceAccount, namespace)
+	imageResourceExists, err := cl.PipelineResourceExists(imageResourceName)
+	if err != nil {
+		glog.Fatalf("[ERROR] Check image resource exist error: %s", err)
+	}
+	if imageResourceExists {
+		fmt.Println("[INFO] Image resource", imageResourceName, "exists, updating")
+		err = cl.UpdatePipelineResource(imageResource)
+	} else {
+		fmt.Println("[INFO] Image resource", imageResourceName, "doesn't exist, creating")
+		err = cl.CreatePipelineResource(imageResource)
+	}
+	if err != nil {
+		glog.Fatalf("[ERROR] Create image resource error: %s", err)
+	}
+
+	// Start source-to-image task run
+	buildTaskRun, err := cl.ConstructFunctionFileTaskRun(name, builder, file, serviceAccount, namespace)
+	if err != nil {
+		glog.Fatalf("[ERROR] Construct function file task run error: %s", err)
+	}
+	fmt.Println("[INFO] Start task run for image", name)
+	taskRunName, err := cl.StartTaskRun(buildTaskRun)
+	if err != nil {
+		glog.Fatalf("[ERROR] Run function file task run error: %s", err)
+	}
+	fmt.Println("[INFO] Complete task run", taskRunName,"successfully")
+	fmt.Println("[INFO] Complete building application", name, "image in namespace", namespace)
+
+	return nil
+}
+
+func readFile(name string) (string, error) {
+	contents,err := ioutil.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+	result := strings.Replace(string(contents),"\n","",1)
+	return result, nil
+}
+
+func readUrlFile(url string) (string, error) {
+	res, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	result := strings.Replace(string(body),"\n","",1)
+	return result, nil
 }

@@ -50,9 +50,29 @@ var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "Deploy Knative service by building image",
 	Example: `
-  # Deploy from git repository to Knative service
-  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
-  kn deploy cnbtest --builder buildpacks-v3 --git-url https://github.com/zhangtbj/cf-sample-app-nodejs --git-revision master --saved-image us.icr.io/test/cnbtest:v1 --serviceaccount default --force`,
+  # Build and deploy from source code to Knative service
+  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/deploy/README.md )
+
+  > kn deploy example-image 
+      --builder kaniko 
+      --git-url https://github.com/bluebosh/knap-example 
+      -git-revision master 
+      --saved-image us.icr.io/test/example-image
+      --serviceaccount default
+
+  > kn deploy test-image 
+      --builder buildpacks-v3 
+      --git-url https://github.com/swisscom/cf-sample-app-nodejs.git 
+      --saved-image us.icr.io/test/test-image 
+      --serviceaccount default 
+      --namespace default 
+      --force
+
+  > kn deploy example-function-image 
+      --builder openwhisk 
+      --file test.js 
+      --saved-image us.icr.io/test/example-function-image 
+      --serviceaccount default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {

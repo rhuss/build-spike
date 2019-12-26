@@ -50,9 +50,19 @@ var redeployCmd = &cobra.Command{
 	Use:   "redeploy",
 	Short: "Redeploy Knative service by special settings",
 	Example: `
-  # Redeploy from git repository to Knative service
-  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/kn-services/doc/deploy-git-resource.md )
-  kn redeploy cnbtest --saved-image us.icr.io/test/cnbtest:v2 --namespace default`,
+  # Rebuild and redeploy from source code to Knative service
+  # ( related: https://github.com/knative-community/build-spike/blob/master/plugins/deploy/README.md )
+  > kn redeploy example-image
+    --namespace default
+
+  > kn redeploy test-image 
+      --saved-image us.icr.io/test/test-image2 
+      --namespace default
+
+  > kn redeploy example-function-image 
+      --file "function main() {return {payload: 'Hello Jordan!'};}"
+      --saved-image us.icr.io/test/example-function-image2 
+      --namespace default`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("")
 		if len(args) < 1 {

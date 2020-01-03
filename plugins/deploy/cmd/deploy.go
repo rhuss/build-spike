@@ -56,7 +56,7 @@ var deployCmd = &cobra.Command{
   > kn deploy example-image 
       --builder kaniko 
       --git-url https://github.com/bluebosh/knap-example 
-      -git-revision master 
+      --git-revision master 
       --saved-image us.icr.io/test/example-image
       --serviceaccount default
 

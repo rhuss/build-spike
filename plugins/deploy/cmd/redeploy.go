@@ -144,6 +144,7 @@ var redeployCmd = &cobra.Command{
 
 		gitUrl := ""
 		gitRevision := ""
+		gitPath := ""
 		if len(file) > 0 {
 			fmt.Println("[INFO] Get function code from file")
 			fmt.Println("[INFO] Get function code:", file)
@@ -171,8 +172,9 @@ var redeployCmd = &cobra.Command{
 					gitRevision = gitResource.Spec.Params[1].Value
 				}
 			}
+			gitRevision = cmd.Flag("git-path").Value.String()
 			fmt.Println("[INFO] Get source code from git resources")
-			fmt.Println("[INFO] Git url:", gitUrl, "git revision:", gitRevision)
+			fmt.Println("[INFO] Git url:", gitUrl, ", git revision:", gitRevision, ", git path:", gitPath)
 		}
 
 		image := cmd.Flag("saved-image").Value.String()
@@ -193,7 +195,7 @@ var redeployCmd = &cobra.Command{
 
 		if len(gitUrl) > 0 && len(file) == 0 {
 			fmt.Println("[INFO] Re-build from git repository into an image")
-			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace)
+			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, gitPath, image, serviceAccount, namespace)
 			if err != nil {
 				fmt.Println("[ERROR] Re-building image from git error:", err)
 				os.Exit(1)
@@ -285,6 +287,7 @@ func init() {
 	redeployCmd.PersistentFlags().StringP("kubeconfig", "", "", "kube config file (default is KUBECONFIG from ENV property)")
 	redeployCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
 	redeployCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
+	redeployCmd.Flags().StringP( "git-path", "p","", "[Git] path of git repo")
 	redeployCmd.Flags().StringP( "file", "f","", "[Function] File of function which snippet of code without http server")
 	redeployCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
 	redeployCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")

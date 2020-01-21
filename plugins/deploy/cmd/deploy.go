@@ -82,7 +82,7 @@ var deployCmd = &cobra.Command{
 		}
 		name := args[0]
 
-		fmt.Println("[INFO] Deploy from git repository to Knative service")
+		fmt.Println("[INFO] Deploy from source code to Knative service")
 		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
 
@@ -111,6 +111,7 @@ var deployCmd = &cobra.Command{
 
 		gitUrl := cmd.Flag("git-url").Value.String()
 		gitRevision := cmd.Flag("git-revision").Value.String()
+		gitPath := cmd.Flag("git-path").Value.String()
 		file := cmd.Flag("file").Value.String()
 
 		image := cmd.Flag("saved-image").Value.String()
@@ -121,7 +122,7 @@ var deployCmd = &cobra.Command{
 
 		if len(gitUrl) > 0 && len(file) == 0 {
 			fmt.Println("[INFO] Build from git repository into an image")
-			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, image, serviceAccount, namespace)
+			err = tektonClient.BuildFromGit(name, builder, gitUrl, gitRevision, gitPath, image, serviceAccount, namespace)
 			if err != nil {
 				fmt.Println("[ERROR] Building image from git error:", err)
 				os.Exit(1)
@@ -226,6 +227,7 @@ func init() {
 	deployCmd.Flags().StringP("builder", "b", "", "builder of source-to-image task")
 	deployCmd.Flags().StringP( "git-url", "u","", "[Git] url of git repo")
 	deployCmd.Flags().StringP( "git-revision", "r","master", "[Git] revision of git repo")
+	deployCmd.Flags().StringP( "git-path", "p","", "[Git] path of git repo")
 	deployCmd.Flags().StringP( "file", "f","", "[Function] File of function which snippet of code without http server")
 	deployCmd.Flags().StringP("saved-image", "i", "", "generated saved image path")
 	deployCmd.Flags().StringP("serviceaccount", "s", "default", "service account to push image")

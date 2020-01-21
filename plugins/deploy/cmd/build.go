@@ -73,6 +73,7 @@ var buildCmd = &cobra.Command{
 		}
 		name := args[0]
 
+		fmt.Println("[INFO] Build from source code to image")
 		serviceAccount := cmd.Flag("serviceaccount").Value.String()
 		namespace := cmd.Flag("namespace").Value.String()
 
